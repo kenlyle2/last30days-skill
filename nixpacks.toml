@@ -5,4 +5,4 @@ nixPkgs = ["python312", "nodejs_20", "yt-dlp"]
 cmds = []
 
 [start]
-cmd = "python3 skills/last30days/scripts/watchlist.py run-all"
+cmd = "python3 skills/last30days/scripts/watchlist.py run-all && python3 airtable_writer.py"

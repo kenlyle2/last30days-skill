@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.railway.app/railway-schema-v2.json",
   "deploy": {
-    "startCommand": "python3 skills/last30days/scripts/watchlist.py run-all",
+    "startCommand": "python3 skills/last30days/scripts/watchlist.py run-all && python3 airtable_writer.py",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   },
