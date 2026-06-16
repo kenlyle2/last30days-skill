@@ -2,7 +2,7 @@
 nixPkgs = ["python312", "nodejs_20", "yt-dlp"]
 
 [phases.install]
-cmds = []
+cmds = ["pip install -e ."]
 
 [start]
-cmd = "python3 skills/last30days/scripts/watchlist.py run-all && python3 airtable_writer.py"
+cmd = "uvicorn api:app --host 0.0.0.0 --port ${PORT:-8080}"
