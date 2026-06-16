@@ -29,7 +29,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import store
 
-app = FastAPI(title="30 Day Agent", version="1.0.0")
+app = FastAPI(title="Social Listening Agent", version="1.0.0")
 
 WATCHLIST = Path(__file__).parent / "skills" / "last30days" / "scripts" / "watchlist.py"
 WRITER = Path(__file__).parent / "airtable_writer.py"
