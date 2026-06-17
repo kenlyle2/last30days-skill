@@ -26,10 +26,10 @@ import store
 AIRTABLE_PAT = os.environ.get("AIRTABLE_PAT", "")
 AIRTABLE_BASE_ID = os.environ.get("AIRTABLE_BASE_ID", "app7HHjseQMlJHkFA")
 AIRTABLE_TABLE_ID = os.environ.get("AIRTABLE_TABLE_TRENDING_HOOKS", "tblUGLOyLaHiG5kWs")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")  # fallback if no Gemini key
 
 TOP_N = 5  # hooks per topic per run
-MODEL = "gpt-4o-mini"
 
 
 def week_monday() -> str:
@@ -45,14 +45,10 @@ def week_label() -> str:
     return today.strftime("%G-W%V")
 
 
-def generate_hook(niche: str, finding: dict) -> str:
-    """Call OpenAI to produce a PostGlider-ready hook from a finding."""
-    if not OPENAI_API_KEY:
-        return f"[Hook pending — no OPENAI_API_KEY] {finding.get('source_title', '')}"
-
-    prompt = (
+def _hook_prompt(niche: str, finding: dict) -> str:
+    return (
         f"You are writing a social media post hook for a {niche} business owner.\n\n"
-        f"Source platform: {finding['source']}\n"
+        f"Source platform: {finding.get('source', 'social media')}\n"
         f"Title: {finding.get('source_title', '')}\n"
         f"Content summary: {finding.get('summary') or finding.get('content', '')[:600]}\n\n"
         "Write a 3-sentence social post:\n"
@@ -63,28 +59,52 @@ def generate_hook(niche: str, finding: dict) -> str:
         "Return only the post text, no labels or quotes."
     )
 
-    payload = json.dumps({
-        "model": MODEL,
-        "input": prompt,
-        "max_output_tokens": 200,
-    })
 
+def _gemini_hook(prompt: str) -> str:
+    import tempfile
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 300},
+    })
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(json.loads(payload), f)
+        tmp = f.name
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    )
     result = subprocess.run(
-        [
-            "curl", "-s", "-X", "POST",
-            "https://api.openai.com/v1/responses",
-            "-H", f"Authorization: Bearer {OPENAI_API_KEY}",
-            "-H", "Content-Type: application/json",
-            "-d", payload,
-        ],
+        ["curl", "-s", "--max-time", "30", "-X", "POST", url,
+         "-H", "Content-Type: application/json", "-d", f"@{tmp}"],
         capture_output=True, text=True,
     )
+    os.unlink(tmp)
+    data = json.loads(result.stdout)
+    return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+
+def _openai_hook(prompt: str) -> str:
+    payload = json.dumps({"model": "gpt-4o-mini", "input": prompt, "max_output_tokens": 200})
+    result = subprocess.run(
+        ["curl", "-s", "-X", "POST", "https://api.openai.com/v1/responses",
+         "-H", f"Authorization: Bearer {OPENAI_API_KEY}",
+         "-H", "Content-Type: application/json", "-d", payload],
+        capture_output=True, text=True,
+    )
+    data = json.loads(result.stdout)
+    return data["output"][0]["content"][0]["text"].strip()
+
+
+def generate_hook(niche: str, finding: dict) -> str:
+    prompt = _hook_prompt(niche, finding)
     try:
-        data = json.loads(result.stdout)
-        return data["output"][0]["content"][0]["text"].strip()
+        if GEMINI_API_KEY:
+            return _gemini_hook(prompt)
+        if OPENAI_API_KEY:
+            return _openai_hook(prompt)
     except Exception as e:
         print(f"  Hook generation failed: {e}", file=sys.stderr)
-        return finding.get("source_title", "")
+    return finding.get("source_title", "")
 
 
 def airtable_post(record_fields: dict) -> dict:

@@ -24,12 +24,16 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+import json
+
 SCRIPTS = Path(__file__).parent / "skills" / "last30days" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import store
 
 app = FastAPI(title="Social Listening Agent", version="1.0.0")
+
+NAICS_TABLE = Path(__file__).parent / "naics_topics.json"
 
 WATCHLIST = Path(__file__).parent / "skills" / "last30days" / "scripts" / "watchlist.py"
 WRITER = Path(__file__).parent / "airtable_writer.py"
@@ -53,6 +57,18 @@ class AddTopicResponse(BaseModel):
 class RunResponse(BaseModel):
     status: str
     topics_run: int
+    message: str
+
+
+class NaicsRequest(BaseModel):
+    naics: str
+    business_id: Optional[str] = None
+
+
+class NaicsResponse(BaseModel):
+    naics: str
+    topic_slug: str
+    status: str
     message: str
 
 
@@ -101,6 +117,53 @@ def add_topic(req: AddTopicRequest):
         naics=req.naics,
         status="added",
         message=f"'{topic}' added to watchlist with weekly schedule",
+    )
+
+
+@app.post("/watchlist/add-by-naics", response_model=NaicsResponse)
+def add_by_naics(req: NaicsRequest):
+    """
+    PostGlider calls this at business onboarding with the business's NAICS code.
+    Looks up the topic_slug in naics_topics.json and delegates to /watchlist/add.
+    Idempotent — safe if NAICS already enrolled.
+    """
+    if not NAICS_TABLE.exists():
+        raise HTTPException(status_code=503, detail="naics_topics.json not found")
+
+    lookup = json.loads(NAICS_TABLE.read_text())
+    match = next((t for t in lookup.get("topics", []) if t["naics"] == req.naics.strip()), None)
+    if not match:
+        raise HTTPException(
+            status_code=404,
+            detail=f"NAICS {req.naics} not in lookup table — add it to naics_topics.json or register the topic manually",
+        )
+
+    topic_slug = match["topic_slug"]
+
+    existing = store.get_topic(topic_slug)
+    if existing:
+        return NaicsResponse(
+            naics=req.naics,
+            topic_slug=topic_slug,
+            status="exists",
+            message=f"'{topic_slug}' already on watchlist",
+        )
+
+    result = subprocess.run(
+        [sys.executable, str(WATCHLIST), "add", topic_slug, "--weekly"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"watchlist.py add failed: {result.stderr.strip()}",
+        )
+
+    return NaicsResponse(
+        naics=req.naics,
+        topic_slug=topic_slug,
+        status="added",
+        message=f"'{topic_slug}' enrolled from NAICS {req.naics} with weekly schedule",
     )
 
 
