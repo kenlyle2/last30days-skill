@@ -6,6 +6,6 @@
     "restartPolicyMaxRetries": 3
   },
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "RAILPACK"
   }
 }
