@@ -42,3 +42,18 @@ uv.lock            export-ignore
 .clawhubignore  export-ignore
 .gitignore      export-ignore
 .gitattributes  export-ignore
+
+# --- PostGlider fork-only deployment scaffolding ---
+# These files exist only in kenlyle2/last30days-skill (the PostGlider fork), not in
+# upstream mvanhorn/last30days-skill. When pulling upstream improvements to the core
+# research engine (`git fetch upstream && git merge upstream/main`), keep our own
+# versions of these instead of taking upstream's (which for most simply don't exist
+# upstream, so a normal merge wouldn't touch them anyway -- but if upstream ever adds a
+# file with the same name for an unrelated purpose, "ours" wins, not upstream's).
+# Requires local `git config merge.ours.driver true` once per clone -- same pattern as
+# this workspace's own CLAUDE.md merge=ours convention.
+railway.json        merge=ours
+nixpacks.toml       merge=ours
+api.py              merge=ours
+airtable_writer.py  merge=ours
+naics_topics.json   merge=ours
