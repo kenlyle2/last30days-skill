@@ -7,6 +7,7 @@ Endpoints:
   GET  /watchlist/topics — list all registered topics and their schedules
   POST /watchlist/run    — trigger an immediate run (called by Railway Cron weekly)
   POST /query            — one-off synchronous research call, returns the answer directly
+  GET  /diagnose         — per-source key/CLI availability report, no search run
   GET  /health           — liveness check
 
 PostGlider calls /watchlist/add with the NAICS-derived topic_slug when a new business
@@ -91,6 +92,25 @@ class QueryResponse(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "30-day-agent"}
+
+
+@app.get("/diagnose")
+def diagnose():
+    """
+    Per-source key/CLI availability report -- which keys were detected, which CLIs are
+    installed, which backends are reachable. No search run, no API spend.
+    """
+    result = subprocess.run(
+        [sys.executable, str(LAST30DAYS), "--diagnose"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return JSONResponse({
+        "returncode": result.returncode,
+        "output": result.stdout.strip(),
+        "stderr": result.stderr.strip() if result.returncode != 0 else None,
+    })
 
 
 @app.post("/watchlist/add", response_model=AddTopicResponse)
