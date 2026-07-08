@@ -80,11 +80,13 @@ class NaicsResponse(BaseModel):
 class QueryRequest(BaseModel):
     topic: str
     quick: bool = True
+    auto_resolve: bool = False
 
 
 class QueryResponse(BaseModel):
     topic: str
     output: str
+    stderr: Optional[str] = None
 
 
 # --- Endpoints ---
@@ -216,8 +218,10 @@ def query(req: QueryRequest):
     cmd = [sys.executable, str(LAST30DAYS), topic, "--emit", "compact"]
     if req.quick:
         cmd.append("--quick")
+    if req.auto_resolve:
+        cmd.append("--auto-resolve")
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
 
     if result.returncode != 0:
         raise HTTPException(
@@ -225,7 +229,10 @@ def query(req: QueryRequest):
             detail=f"last30days.py failed: {result.stderr.strip()[:1000]}",
         )
 
-    return QueryResponse(topic=topic, output=result.stdout.strip())
+    github_lines = "\n".join(
+        l for l in result.stderr.splitlines() if "github" in l.lower() or "GitHub" in l
+    ) or None
+    return QueryResponse(topic=topic, output=result.stdout.strip(), stderr=github_lines)
 
 
 @app.get("/watchlist/topics")
