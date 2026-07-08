@@ -6,11 +6,14 @@ Endpoints:
   POST /watchlist/add    — register a niche topic (called by PostGlider on business onboarding)
   GET  /watchlist/topics — list all registered topics and their schedules
   POST /watchlist/run    — trigger an immediate run (called by Railway Cron weekly)
+  POST /query            — one-off synchronous research call, returns the answer directly
   GET  /health           — liveness check
 
 PostGlider calls /watchlist/add with the NAICS-derived topic_slug when a new business
 onboards. Railway Cron calls /watchlist/run weekly to execute all registered topics and
-write TrendingHooks rows to Airtable via airtable_writer.py.
+write TrendingHooks rows to Airtable via airtable_writer.py. /query is the direct-answer
+path for ViralTrends' EXPLAIN step (and ad-hoc use) -- no watchlist registration, no
+Airtable, just last30days.py run once against a topic and its stdout returned as JSON.
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ NAICS_TABLE = Path(__file__).parent / "naics_topics.json"
 
 WATCHLIST = Path(__file__).parent / "skills" / "last30days" / "scripts" / "watchlist.py"
 WRITER = Path(__file__).parent / "airtable_writer.py"
+LAST30DAYS = Path(__file__).parent / "skills" / "last30days" / "scripts" / "last30days.py"
 
 
 # --- Request / Response models ---
@@ -70,6 +74,16 @@ class NaicsResponse(BaseModel):
     topic_slug: str
     status: str
     message: str
+
+
+class QueryRequest(BaseModel):
+    topic: str
+    quick: bool = True
+
+
+class QueryResponse(BaseModel):
+    topic: str
+    output: str
 
 
 # --- Endpoints ---
@@ -165,6 +179,33 @@ def add_by_naics(req: NaicsRequest):
         status="added",
         message=f"'{topic_slug}' enrolled from NAICS {req.naics} with weekly schedule",
     )
+
+
+@app.post("/query", response_model=QueryResponse)
+def query(req: QueryRequest):
+    """
+    One-off synchronous research call -- no watchlist registration, no Airtable write.
+    Runs last30days.py against the given topic and returns its compact-text output directly.
+    Intended for ViralTrends' EXPLAIN step and ad-hoc use; --quick keeps latency reasonable
+    for a synchronous HTTP call (set quick=false for a fuller, slower pass).
+    """
+    topic = req.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=400, detail="topic is required")
+
+    cmd = [sys.executable, str(LAST30DAYS), topic, "--emit", "compact"]
+    if req.quick:
+        cmd.append("--quick")
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"last30days.py failed: {result.stderr.strip()[:1000]}",
+        )
+
+    return QueryResponse(topic=topic, output=result.stdout.strip())
 
 
 @app.get("/watchlist/topics")
