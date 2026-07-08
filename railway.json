@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.railway.app/railway-schema-v2.json",
   "deploy": {
-    "startCommand": "python3 -m pip install -e . && uvicorn api:app --host 0.0.0.0 --port ${PORT:-8080}",
+    "startCommand": "uv pip install --system -e . && uvicorn api:app --host 0.0.0.0 --port ${PORT:-8080}",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   },

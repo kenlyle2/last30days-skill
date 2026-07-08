@@ -2,7 +2,7 @@
 nixPkgs = ["python312", "nodejs_20", "yt-dlp"]
 
 [phases.install]
-cmds = ["python3 -m pip install -e ."]
+cmds = ["uv pip install --system -e ."]
 
 [start]
-cmd = "python3 -m pip install -e . && uvicorn api:app --host 0.0.0.0 --port ${PORT:-8080}"
+cmd = "uv pip install --system -e . && uvicorn api:app --host 0.0.0.0 --port ${PORT:-8080}"
